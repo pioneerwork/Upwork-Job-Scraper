@@ -1,0 +1,85 @@
+{
+  "query": "product listing",
+  "search_any": "catalog management ecommerce listing amazon shopify product upload woocommerce PIM",
+  "search_none": "developer engineer programmer software invoice graphic design logo",
+  "category": [
+    "data entry & transcription services",
+    "virtual assistance"
+  ],
+  "projectDuration": [
+    "week",
+    "month",
+    "semester",
+    "ongoing"
+  ],
+  "fixed": true,
+  "hourly": true,
+  "hourly_min": 5,
+  "hourly_max": 60,
+  "limit": 50,
+  "payment_verified": true,
+  "hires_min": 1,
+  "sort": "newest",
+  "days_posted": 14,
+  "save_csv": true,
+
+  "additional_queries": [
+    {
+      "query": "shopify data entry",
+      "search_any": "product upload csv bulk listing variant store manager",
+      "limit": 30
+    },
+    {
+      "query": "amazon product upload",
+      "search_any": "FBA listing catalog inventory bulk",
+      "limit": 30
+    },
+    {
+      "query": "ecommerce virtual assistant",
+      "search_any": "product listing catalog shopify woocommerce inventory",
+      "limit": 30
+    },
+    {
+      "query": "product data entry",
+      "search_any": "ecommerce shopify amazon catalog SKU attribute",
+      "limit": 30
+    }
+  ],
+
+  "filtering": {
+    "use_ai_filter": false,
+    "qualify_keywords": [
+      "product listing",
+      "product upload",
+      "product data entry",
+      "catalog management",
+      "catalogue management",
+      "catalog upload",
+      "shopify product",
+      "woocommerce product",
+      "amazon listing",
+      "amazon product",
+      "ebay listing",
+      "ecommerce data entry",
+      "e-commerce data entry",
+      "product information",
+      "sku",
+      "item listing",
+      "product content",
+      "product description",
+      "product attributes"
+    ],
+    "disqualify_keywords": [
+      "invoice",
+      "billing",
+      "copy typing",
+      "developer",
+      "software engineer",
+      "graphic design",
+      "logo design",
+      "social media manager",
+      "seo writer",
+      "tutor"
+    ]
+  }
+}

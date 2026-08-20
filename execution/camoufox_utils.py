@@ -38,6 +38,44 @@ async def human_type(page: Page, selector: str, text: str):
         await page.keyboard.type(char)
         await asyncio.sleep(random.uniform(0.15, 0.45))
 
+async def _handle_security_question(page: Page, security_answer: str) -> bool:
+    """
+    If the current page is the Upwork security question (e.g. "Your mother's maiden name"),
+    fill the answer from UPWORK_SECURITY_ANSWER and click Continue. Returns True if handled.
+    """
+    try:
+        body_text = await page.locator("body").inner_text()
+        if "Let's make sure it's you" not in body_text and "maiden name" not in body_text.lower():
+            return False
+        logger.info("Security question page detected. Filling answer from UPWORK_SECURITY_ANSWER...")
+        if not security_answer:
+            logger.warning("UPWORK_SECURITY_ANSWER is empty. Cannot auto-fill security question.")
+            return False
+        input_selector = '#login_answer'
+        try:
+            await page.wait_for_selector(input_selector, timeout=8000)
+        except PlaywrightTimeoutError:
+            input_selector = 'input[name="login[answer]"]'
+            try:
+                await page.wait_for_selector(input_selector, timeout=3000)
+            except PlaywrightTimeoutError:
+                logger.warning("Security answer input not found.")
+                return False
+        await human_type(page, input_selector, security_answer)
+        logger.debug("Security answer entered. Clicking Continue...")
+        continue_btn = page.get_by_role("button", name="Continue")
+        if await continue_btn.count() == 0:
+            continue_btn = page.locator('button:has-text("Continue")')
+        if await continue_btn.count() > 0:
+            await continue_btn.first.click(timeout=5000)
+        else:
+            await page.keyboard.press("Enter")
+        return True
+    except Exception as e:
+        logger.debug(f"Security question handling failed: {e}")
+        return False
+
+
 async def safe_goto(
     page: Page,
     url: str,
@@ -128,6 +166,12 @@ async def login_process(
                 await page.press('#login_password', 'Enter')
 
             await asyncio.sleep(random.uniform(3.5, 6.0))
+
+            # --- Security question step (e.g. "Your mother's maiden name") ---
+            security_answer = os.environ.get("UPWORK_SECURITY_ANSWER", "").strip()
+            if await _handle_security_question(page, security_answer):
+                await asyncio.sleep(random.uniform(3.5, 6.0))
+
             body_text = await page.locator('body').inner_text()
             # error_texts = ['Verification failed. Please try again.', 'Please fix the errors below', 'Due to technical difficulties we are unable to process your request.']
             if 'Verification failed. Please try again.' in body_text[:500] or 'Please fix the errors below' in body_text[:500] or "Due to technical difficulties we are unable to process your request." in body_text[:500]:
@@ -228,6 +272,15 @@ async def login_and_solve(
         
         # If we successfully clicked the button, we skip the initial goto in login_process
         login_success = await login_process(login_url, page, context, username, password, initial_navigation=not clicked_login_button)
+
+        # After login_process succeeds, check for security question (it may appear
+        # after in-place retry paths that return True before reaching the inline check)
+        if login_success:
+            security_answer = os.environ.get("UPWORK_SECURITY_ANSWER", "").strip()
+            if await _handle_security_question(page, security_answer):
+                logger.info("✅ Security question answered after login.")
+                await asyncio.sleep(random.uniform(3.5, 6.0))
+
         # if login fails, try clearing cookies and re-solving captcha
         if not login_success:
             logger.error("⚠️ Login failed after all attempts.")

@@ -51,3 +51,6 @@ env/
 .DS_Store
 Thumbs.db
 notes.txt
+
+# macOS custom-folder-icon stub
+Icon?

@@ -175,7 +175,8 @@ def normalize_search_params(params: dict, credentials_provided: bool, buffer: in
     if 'hires_min' in params or 'hires_max' in params:
         ranges = []
         min_val = int(params.get('hires_min', 0))
-        max_val = int(params.get('hires_max', float('inf')))
+        _hires_max = params.get('hires_max')
+        max_val = int(_hires_max) if _hires_max is not None else 999999
         if min_val <= 9 and max_val >= 1:
             ranges.append('1-9')
         if max_val >= 10:
@@ -482,23 +483,25 @@ def get_job_urls_requests(session, search_querys, search_urls, limit=50):
                 with open(f"execution/debug_requests_page_{page_num}.html", "w", encoding="utf-8") as f:
                      f.write(html)
                 if len(html) < 2000:
-                     logger.debug(f"[requests] Short response content: {html}")
-                
-                # Check for "log in" string in the first iteration
+                    logger.debug(f"[requests] Short response content: {html}")
+
+                # Log warning if "log in" text is detected but do NOT abort
                 if page_num == 1 and query == search_querys[0]:
-                    if "log in" in html.lower() and "sign up" in html.lower() and "user menu" not in html.lower():
-                         logger.warning("⚠️ 'log in' string detected. Session might be invalid.")
-                         raise Exception("Session Invalid: 'log in' detected on search page.")
+                    if "log in" in html.lower() and "sign up" in html.lower():
+                        logger.warning("⚠️ 'log in' string detected on search page header, but continuing scraping.")
 
                 page_hrefs = parse_job_search_results(html)
                 logger.debug(f"Found {len(page_hrefs)} jobs on page {page_num} for query '{query}'")
                 if not page_hrefs:
-                     if page_num == 1:
-                         logger.error(f"❌ No jobs found on page 1 for query '{query}'. Search parameters might be invalid or Upwork is blocking.")
-                         raise Exception("No jobs found on first page. Aborting pipeline.")
-                         sys.exit(0)
-                     break
-                
+                    if page_num == 1:
+                        is_primary = (query == search_querys[0])
+                        if is_primary:
+                            logger.error(f"❌ No jobs found on page 1 for primary query '{query}'. Aborting.")
+                            raise Exception("No jobs found on first page. Aborting pipeline.")
+                        else:
+                            logger.warning(f"⚠️ No jobs found for secondary query '{query}'. Skipping.")
+                    break
+
                 if page_num == pages_needed:
                     page_hrefs = page_hrefs[:jobs_from_last_page]
                 all_hrefs.extend(page_hrefs)
@@ -506,10 +509,13 @@ def get_job_urls_requests(session, search_querys, search_urls, limit=50):
                     all_hrefs = all_hrefs[:limit]
                     break
             except Exception as e:
-                logger.exception(f"[requests] Skipping page {page_num} due to errors: {e}")
-                sys.exit(0)
-                
-                continue
+                if query == search_querys[0]:
+                    logger.exception(f"[requests] Primary query error on page {page_num}: {e}")
+                    sys.exit(1)
+                else:
+                    logger.warning(f"[requests] Secondary query '{query}' page {page_num} error: {e}. Skipping.")
+                    break
+
         search_results[query] = all_hrefs
     logger.debug(f"[requests] Search results: {search_results}\n")
     return search_results
@@ -636,6 +642,17 @@ async def main(jsonInput: dict) -> list[dict]:
 
     search_queries = [search_params.get('query', search_params.get('search_any', 'search'))]
     search_urls = [search_url]
+
+    # Build additional search URLs from additional_queries
+    for aq in search_params.get('additional_queries', []):
+        merged = {k: v for k, v in search_params.items() if k != 'additional_queries'}
+        merged.update(aq)
+        aq_normalized, _ = normalize_search_params(merged, credentials_provided, buffer)
+        aq_url = build_upwork_search_url(aq_normalized)
+        search_urls.append(aq_url)
+        search_queries.append(aq.get('query', aq.get('search_any', 'additional')))
+    if len(search_queries) > 1:
+        logger.info(f"📋 Multi-query mode: {len(search_queries)} query sets")
     
     # proxy
     proxy_details = jsonInput.get('proxy_details', None)
@@ -664,8 +681,14 @@ async def main(jsonInput: dict) -> list[dict]:
             logger.info("💼 Getting Related Jobs (Selenium)...")
             # We need to make sure get_job_urls_selenium is available (it is in the file as I restored it earlier)
             job_urls_dict = get_job_urls_selenium(driver, search_queries, search_urls, limit=limit)
-            job_urls = list(job_urls_dict.values())[0] if job_urls_dict else []
-            logger.debug(f"Got {len(job_urls)} job URLs.")
+            seen = set()
+            job_urls = []
+            for q, urls in job_urls_dict.items():
+                for u in urls:
+                    if u not in seen:
+                        seen.add(u)
+                        job_urls.append(u)
+            logger.info(f"📊 Total unique job URLs across {len(job_urls_dict)} queries: {len(job_urls)}")
             
             if not job_urls:
                 logger.warning("No jobs URLs found. Exiting.")
@@ -709,8 +732,14 @@ async def main(jsonInput: dict) -> list[dict]:
             # --- Requests for Search (Fast, matching old script) ---
             logger.info("💼 Getting Related Jobs (Requests)...")
             job_urls_dict = get_job_urls_requests(session, search_queries, search_urls, limit=limit)
-            job_urls = list(job_urls_dict.values())[0] if job_urls_dict else []
-            logger.debug(f"Got {len(job_urls)} job URLs.")
+            seen = set()
+            job_urls = []
+            for q, urls in job_urls_dict.items():
+                for u in urls:
+                    if u not in seen:
+                        seen.add(u)
+                        job_urls.append(u)
+            logger.info(f"📊 Total unique job URLs across {len(job_urls_dict)} queries: {len(job_urls)}")
              
         except Exception as e:
             logger.error(f"Critical error during Camoufox logic: {e}")

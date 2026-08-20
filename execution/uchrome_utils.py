@@ -1,5 +1,4 @@
-
-
+import os
 import random
 import time
 
@@ -50,6 +49,45 @@ def human_type(element, text: str):
         element.send_keys(char)
         # Random sleep between 0.15 and 0.45 seconds
         time.sleep(random.uniform(0.15, 0.45))
+
+
+def _handle_security_question_selenium(driver) -> bool:
+    """
+    If the current page is the Upwork security question (e.g. "Your mother's maiden name"),
+    fill the answer from UPWORK_SECURITY_ANSWER and click Continue. Returns True if handled.
+    """
+    try:
+        body_text = driver.find_element(By.TAG_NAME, "body").text
+        if "Let's make sure it's you" not in body_text and "maiden name" not in body_text.lower():
+            return False
+        security_answer = os.environ.get("UPWORK_SECURITY_ANSWER", "").strip()
+        if not security_answer:
+            logger.warning("UPWORK_SECURITY_ANSWER is empty. Cannot auto-fill security question.")
+            return False
+        logger.info("Security question page detected. Filling answer from UPWORK_SECURITY_ANSWER...")
+        try:
+            inp = WebDriverWait(driver, 8).until(
+                EC.visibility_of_element_located((By.CSS_SELECTOR, '#login_answer'))
+            )
+        except TimeoutException:
+            inp = WebDriverWait(driver, 3).until(
+                EC.visibility_of_element_located((By.CSS_SELECTOR, 'input[name="login[answer]"]'))
+            )
+        inp.click()
+        inp.clear()
+        human_type(inp, security_answer)
+        time.sleep(random.uniform(1.0, 2.0))
+        try:
+            continue_btn = driver.find_element(By.XPATH, "//button[contains(text(), 'Continue')]")
+            driver.execute_script("arguments[0].click();", continue_btn)
+        except NoSuchElementException:
+            inp.send_keys(Keys.RETURN)
+        time.sleep(random.uniform(3.0, 5.0))
+        return True
+    except Exception as e:
+        logger.debug(f"Security question handling failed: {e}")
+        return False
+
 
 def login_and_solve_selenium(driver, username, password, login_url, search_url):
     """
@@ -163,6 +201,10 @@ def login_and_solve_selenium(driver, username, password, login_url, search_url):
             raise
         
         time.sleep(random.uniform(7, 10))
+
+        # Security question (e.g. "Your mother's maiden name") from UPWORK_SECURITY_ANSWER
+        if _handle_security_question_selenium(driver):
+            time.sleep(random.uniform(5, 8))
 
         # Check for success (e.g. not on login page, or specific element)
         if "login" not in driver.current_url:

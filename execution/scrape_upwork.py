@@ -26,10 +26,11 @@ except ImportError:
     from execution.logger import Logger
     from execution.upwork_core import main as scrape_main
 
-# Load environment variables from .env directory
+# Load environment variables: .env directory (legacy) and scraper root .env file
 parent_dir = os.path.dirname(execution_dir)
 env_dir = os.path.join(parent_dir, '.env')
 load_dotenv(os.path.join(env_dir, '.env'))
+load_dotenv(os.path.join(parent_dir, '.env'))  # standard .env file in scraper root
 
 # Setup Logging
 logger = Logger(level="DEBUG").get_logger()
